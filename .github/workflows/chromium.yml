@@ -1,0 +1,55 @@
+name: Build Chromium AppImage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential git python3 ninja-build cmake libx11-dev libx11-xcb-dev libxrandr-dev libxss-dev libasound2-dev libpulse-dev libxtst-dev libnss3-dev libxcomposite-dev libxcursor-dev libxi-dev libxdamage-dev libxt-dev libxinerama-dev libxkbcommon-dev libdrm-dev libgbm-dev libwayland-dev libwayland-egl-backend-dev libegl1-mesa-dev libdbus-1-dev libfontconfig1-dev
+
+      - name: Download Chromium Source
+        run: |
+          mkdir -p chromium && cd chromium
+          git clone https://chromium.googlesource.com/chromium/src.git
+          cd src
+          git fetch --no-tags
+          git checkout -b build
+          ./build/install-build-deps.sh
+          gclient sync
+
+      - name: Configure and Build Chromium
+        run: |
+          cd chromium/src
+          gn gen out/Default --args="is_debug=false is_component_build=false enable_nacl=false"
+          autoninja -C out/Default chrome
+
+      - name: Package as AppImage
+        env:
+          ARCH: x86_64
+        run: |
+          sudo apt install -y appimagekit
+          mkdir -p AppDir/usr/bin
+          cp out/Default/chrome AppDir/usr/bin/chrome
+          cp -r out/Default/*.so AppDir/usr/lib/
+          cp -r resources/* AppDir/
+          appimagetool AppDir Chromium.AppImage
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v3
+        with:
+          name: Chromium.AppImage
+          path: Chromium.AppImage
